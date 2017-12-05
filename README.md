@@ -1,1 +1,1 @@
-# ApproximateBayesianComputation
+# Approximate Bayesian Computation
