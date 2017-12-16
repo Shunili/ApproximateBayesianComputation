@@ -8,14 +8,18 @@ shinyUI(fluidPage(
   
   h3("Section I: Normal-Normal model"),
   
+  withMathJax(),
+  p("Given a student’s scores on the first five Bayes homeworks, we can construct a normal-normal Bayesian model to make inferences about this student’s underlying Bayes skill level:"), 
+  helpText('$$X_i | \\mu, \\sigma^2 \\sim N(\\mu, \\tau^{-1})$$'),
+  helpText('$$\\mu \\sim N(85, 3^2$$'),
+  helpText('$$\\tau \\sim Gamma(3, 5)$$'),
   
-  p("Given a student’s scores on the first five Bayes homeworks, we can construct a normal-normal Bayesian model to make inferences about this student’s underlying Bayes skill level"), 
-  p("How to add Latex form equations????"),
   hr(),
   
   h3("Section II: Tune Prior Parameters"),
+  withMathJax(),
+  p('Recall that \\(N(\\mu, \\tau)\\) models the average bayes score of this student. Use the slider to update \\(\\mu \\sim N(85, 9)\\). This particular normal prior indicates that his score is likely between 74 and 94. Use the third slider to adjust y-aixs limit of the plot.'),
   
-  p("Recall that N(mu,sd) models the average bayes score of this student. Use the slider to update mu~N(85,9). This particular normal prior indicates that his score is likely between 74 and 94. Use the third slider to adjust y-aixs limit of the plot."),
   
   fluidRow(
     column(4,
@@ -33,7 +37,7 @@ shinyUI(fluidPage(
   
   hr(),
 
-  p("The parameter tau models the precision of scores. Update it to Gamma(3, 5), which indicates that variance of scores is 0-10 from homework to homework. Use the third slider to adjust y-aixs limit of the plot."),
+  p("The parameter tau models the precision of scores. Update it to \\(Gamma(3, 5)\\), which indicates that variance of scores is 0-10 from homework to homework. Use the third slider to adjust y-aixs limit of the plot."),
   
   fluidRow(
     column(4,
@@ -69,27 +73,13 @@ shinyUI(fluidPage(
                            "Range" = "range",
                            "Just data" = "data")),
       
-      
       selectInput("metric", "Choose the metric:",
                   c("L-1 Norm" = "L1Norm",
                     "L-2 Norm" = "L2Norm")),
       
-      # the Gamma prior
-      #h4("Tune the Gamma(r,s) prior:"), 
-      #sliderInput("rPrior", "parameter r", min = 0, max = 100, value = 5),
-      #sliderInput("sPrior", "parameter s", min = 0, max = 100, value = 5),
-      
-      # the Normal prior 
-      #h4("Tune the Normal(mu,sd) prior:"), 
-      #sliderInput("meanPrior", "parameter mu", min = 0, max = 100, value = 5),
-      #sliderInput("sdPrior", "parameter sd", min = 0, max = 100, value = 5),
-      
-  
-      #sliderInput("ymax", "Specify the limit of the y-axis:", min = 0, max = 1, value = 0.1),
-      
       sliderInput("iterations", "Specify number of iterations:", value = 5000, min = 1000, max = 10000, step= 100),
       
-      sliderInput("threshold", "Specify threshhold:", min = 0, max = 100, value = 30, step = 5),
+      sliderInput("threshold", "Specify threshhold:", min = 0, max = 30, value = 10, step = 1),
       
       actionButton("runButton", "Run Simulation")
     ),
