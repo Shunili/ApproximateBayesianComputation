@@ -4,20 +4,21 @@ library(devtools)
 library(coda)
 library(shiny)
 
-###############################################################################
+#############################   Normal-Normal    ####################################
+####################  Data  ###############################
 set.seed(2017)
 data = c(70, 80, 75, 83, 72)
 data = data.frame(data)
 data = sort(data[,1])
 tau=c(0.8,rep(0.4,3-1))
 N=3
-################################################################################
+#####################  Summary Stats   ##############################################
 meandata <- mean(data)
 standarddeviationdata <- sd(data)
 mediandata <- median(data)
 rangedata <- max(data) - min(data)
 
-#######################################################################################################################
+############################ ABC_rejection on Normal Normal   #############################################
 # The run_ABC_rejection function returns a data table with all simulation records
 # Input: 
 #       prior_params: prior distrinution parameters
@@ -84,8 +85,8 @@ run_ABC_rejection = function(prior_mean, prior_sd, prior_s, prior_r, iters, thre
   return(sim)
 }
 
-#######################################################################################################################
 
+############################ ABC SMC on Normal Normal   #############################################
 
 # The run_ABC_SMC function returns a data table with all simulation records
 # Input: 
@@ -224,7 +225,7 @@ run_ABC_SMC = function(prior_mean, prior_sd, prior_s, prior_r, n,N,tau,metric,su
   return(sim)
 }
 
-#######################################################################################################################
+######################## The ABC-MCMC on Normal Normal ##########################
 
 # The ABC-MCMC acceptance function
 
@@ -337,7 +338,6 @@ run_MCMC_ABC <- function(prior_mean, prior_sd, prior_s, prior_r, iters, threshol
   return(sim)
 }
 
-
 #######################################################################################################################
 
 run_ABC <- function(input) {
@@ -370,33 +370,39 @@ gamma_plot <- function(s, r){
 }
 
 mean_trace_plot<-function(ourdata) {
-  ggplot(ourdata,aes(x=index, y=sim_mean)) +
+  p= ggplot(ourdata,aes(x=index, y=sim_mean)) +
     geom_point(data=filter(ourdata, sim_acceptance==FALSE), aes(x=index, y=sim_mean, color="red")) +
     geom_point(data=filter(ourdata, sim_acceptance==TRUE)) + 
     geom_line(data=filter(ourdata, sim_acceptance==TRUE)) +
-    ylim(c(50,100))     
+    ylim(c(50,100))  
+  p
 }
 
 precision_trace_plot<-function(ourdata) {
-  ggplot(ourdata,aes(x=index, y=sim_precision)) +
+  p = ggplot(ourdata,aes(x=index, y=sim_precision)) +
     geom_point(data=filter(ourdata, sim_acceptance==FALSE), aes(x=index, y=sim_precision, color="red")) +
     geom_point(data=filter(ourdata, sim_acceptance==TRUE)) + 
     geom_line(data=filter(ourdata, sim_acceptance==TRUE))
+  p
 }
 
 smc_mean_posterior_plot<-function(ourdata){
-  ggplot(ourdata,aes(x = saved_mean)) +
+  p = ggplot(ourdata,aes(x = saved_mean)) +
     geom_histogram(aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.5) 
+  p
 }
 
 smc_precision_posterior_plot<-function(ourdata){
-  ggplot(ourdata,aes(x = saved_precision)) +
+  p = ggplot(ourdata,aes(x = saved_precision)) +
     geom_histogram(aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.5) 
+  p
 }  
+
+
 
 #############################################################################################################3
 shinyServer(function(input, output) {
-
+  
   output$priorPrecisionPdf <- renderPlot({
     gamma_plot(s=input$sPrior, r=input$rPrior) + lims(y=c(0, input$ymax2))
   })
@@ -428,12 +434,14 @@ shinyServer(function(input, output) {
   output$posteriorMeanPdf <- renderPlot({
     simulation() %>% filter(sim_acceptance == TRUE) %>%
       ggplot(aes(x = tmp_mean)) +
-      geom_histogram(aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.5)
+      geom_histogram(aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.5) #+
+      #stat_function(fun=dnorm, args=list(mean=78.5263, sd=1.8513), color = "red")
   })
   
   output$posteriorPrecisionPdf <- renderPlot({
     simulation() %>% filter(sim_acceptance == TRUE) %>%
       ggplot(aes(x = tmp_precision)) +
-      geom_histogram(aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.02)
+      geom_histogram(aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.02) #+
+      #stat_function(fun=dgamma, args=list(shape=4.144751, rate=61.88043), color = "red")
   })
 })
