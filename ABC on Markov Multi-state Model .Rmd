@@ -1,0 +1,682 @@
+### ABC MCMC on Markov Multi-state model
+
+```{r}
+library(shiny)
+library(ggplot2)
+library(dplyr)
+library(devtools)
+library(coda)
+```
+
+```{r}
+cancerdata = read.csv(file="/Users/Shuni/Desktop/Bayes Project/ABC/cancerdata.csv",head=TRUE,sep=",")
+set.seed(2017)
+```
+
+```{r}
+# The ABC-MCMC acceptance function for the Markov model
+# parameters are transition probabilities 
+# 1-1, 1-2, 1-3, 2-1, 2-2, 2-3
+# par is a vector of six values 
+# summary is the number of transitions 
+ABC_acceptance_markov <- function(par,threshold){
+  
+  # prior to avoid negative intensity
+  if (all(par>0) == F) {
+    return(list(F,F,F)) 
+  }
+  
+  # sum of gammas
+  gamma1 = sum(par[1],par[2],par[3])
+  gamma2 = sum(par[4],par[5],par[6])
+  
+  # summary statistics for observed data
+  obsummary = c(38,12,13,2,14,19)
+  
+  # initial counts
+  n11 = n12 = n13 = n21 = n22 = n23 = 0
+  
+  # generate samples from the parameters 
+  
+  # for each of the 37 patients 
+  for (n in 1:37) {
+    current_state = cancerdata[n,3]
+    state=rep(0,60) # following states 
+    
+    # generate data for one person for 60 months 
+    for (i in 1:61) {
+      if (current_state==1){
+         state[i]=sample(c(1,2,3),1,replace = FALSE, prob=c(par[1]/gamma1,par[2]/gamma1,par[3]/gamma1))
+      } else if (current_state==2){
+         state[i]=sample(c(1,2,3),1,replace = FALSE, prob=c(par[4]/gamma2,par[5]/gamma2,par[6]/gamma2))
+      } else if (current_state==3){
+         state[i]=3
+      }
+      curr_state=state[i]
+    } 
+    
+    # retrieve states of the obervered time frames
+    states=c(state[1],state[4],state[7],state[13],state[25],state[61])
+    
+    # summary statistics 
+    for (l in (1:(length(states)-1))){
+      if (states[l]==1){
+        if (states[l+1]==1) {
+          n11 = n11 + 1
+        } else if (states[l+1]==2){
+          n12 = n12 + 1
+        } else if (states[l+1]==3){
+          n13 = n13 +1
+        }
+         
+      } else if (states[l]==2){
+        if (states[l+1]==1) {
+          n21 = n21 + 1
+        } else if (states[l+1]==2){
+          n22 = n22 + 1
+        } else if (states[l+1]==3){
+          n23 = n23 + 1
+        }
+      }
+    }
+  }
+  
+  counts = c(n11,n12,n13,n21,n22,n23)
+
+  # distance of summary statistics
+  dist = dist(rbind(obsummary,counts))
+
+  if (dist < threshold){
+    return(list(states,dist=dist,T))
+  } else {
+    return(list(states,dist=dist,F))
+  }
+}
+```
+
+
+```{R}
+run_ABC_MCMC_markov <- function(N,threshold){
+  
+   # initialize parameters and distance
+   ga11=ga12=ga13=ga21=ga22=ga23=distance_final=rep(NA,N)
+   
+   #initialize values for parameters drawn from prior
+   start_ga11=rbeta(1,1,10)
+   start_ga12=rbeta(1,1,10)
+   start_ga13=rbeta(1,1,10)
+   start_ga21=rbeta(1,1,10)
+   start_ga22=rbeta(1,1,10)
+   start_ga23=rbeta(1,1,10)
+   
+   startvalue = c(start_ga11,start_ga12,start_ga13,start_ga21,start_ga22,start_ga23)
+     
+   chain = array(dim = c(N+1,6))
+   chain[1,] = startvalue
+   
+   for (i in 1:N){
+     
+     # proposal function: draw from the normal distribution
+     proposal = rnorm(6, mean = chain[i,], sd= rep(0.01,6))
+     
+     # decide to accept the proposal or not
+     ABC_result = ABC_acceptance_markov(proposal,threshold)
+     
+     if (ABC_result[3] == T) {
+       chain[i+1,] = proposal
+     } else {
+       chain[i+1,] = chain[i,]
+     }
+     
+   }
+   chain = data.frame(chain)
+   colnames(chain) = c("g11","g12","g13","g21","g22","g23")
+   return(chain)
+}
+```
+
+```{r}
+markov_out = run_ABC_MCMC_markov(2000,40)
+```
+
+```{r}
+ggplot(markov_out,aes(x=g11)) +
+    geom_histogram( aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.03) +
+  stat_function(fun=dbeta, args=list(1, 10)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(markov_out$g11),color ='red' ) 
+
+ggplot(markov_out,aes(x=g12)) +
+    geom_histogram( aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.03) +
+  stat_function(fun=dbeta, args=list(1, 10)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(markov_out$g12),color ='red' )
+
+ggplot(markov_out,aes(x=g13)) +
+    geom_histogram( aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.03) +
+  stat_function(fun=dbeta, args=list(1, 10)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(markov_out$g13),color ='red' )
+
+ggplot(markov_out,aes(x=g21)) +
+    geom_histogram( aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.03) +
+  stat_function(fun=dbeta, args=list(1, 10)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(markov_out$g21),color ='red' )
+
+ggplot(markov_out,aes(x=g22)) +
+    geom_histogram( aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.03) +
+  stat_function(fun=dbeta, args=list(1, 10)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(markov_out$g22),color ='red' )
+
+ggplot(markov_out,aes(x=g23)) +
+    geom_histogram( aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.03) +
+  stat_function(fun=dbeta, args=list(1, 10)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(markov_out$g23),color ='red' ) 
+
+```
+
+```{R}
+# Overall transition probabilities 
+mean(markov_out$g11)/(mean(markov_out$g11)+mean(markov_out$g12)+mean(markov_out$g13))
+mean(markov_out$g12)/(mean(markov_out$g11)+mean(markov_out$g12)+mean(markov_out$g13))
+mean(markov_out$g13)/(mean(markov_out$g11)+mean(markov_out$g12)+mean(markov_out$g13))
+mean(markov_out$g21)/(mean(markov_out$g21)+mean(markov_out$g22)+mean(markov_out$g23))
+mean(markov_out$g22)/(mean(markov_out$g21)+mean(markov_out$g22)+mean(markov_out$g23))
+mean(markov_out$g23)/(mean(markov_out$g21)+mean(markov_out$g22)+mean(markov_out$g23))
+```
+
+
+### ABC SMC on Markov Model
+
+```{r}
+# The run_ABC_SMC_markov function returns a data table with all simulation records
+# Input: 
+#       data: the observed data
+#       N: the total number of simulations
+#       round: the total number of rounds
+#       datapara: the number of transitions for the observed data
+#       tau: acceptane distance 
+# Output: 
+#       a data table 'sim' that contains all simulation records
+
+run_ABC_SMC_markov = function(data,N,round,datapara,tau) {
+  data11=datapara[1]
+  data12=datapara[2]
+  data13=datapara[3]
+  data21=datapara[4]
+  data22=datapara[5]
+  data23=datapara[6]
+  #First Round
+  ga11=ga12=ga13=ga21=ga22=ga23=rep(NA,N)
+  distance_final=rep(NA,N)
+  for (k in 1:N){
+    #sample the parameters from the prior
+    gamma11=rbeta(1,2,2)
+    gamma12=rbeta(1,2,4)
+    gamma13=rbeta(1,2,5)
+    gamma21=rbeta(1,1,15)
+    gamma22=rbeta(1,2,4)
+    gamma23=rbeta(1,2,4)
+    gamma1=sum(gamma12,gamma13,gamma11)
+    gamma2=sum(gamma21,gamma22,gamma23)
+    n11=n12=n13=n21=n22=n23=0
+    #simulate states for the 37 participants
+    for (j in 1:37){
+     curr_state=data[j,4]#start from the initial state
+     state=rep(0,60)
+     state[1]=curr_state 
+     
+     #simulate one state for each month
+     for( i in 2:60){
+       if (curr_state==1){
+         state[i]=sample(c(1,2,3),1,replace = FALSE, prob=c(gamma11/gamma1,gamma12/gamma1,gamma13/gamma1))
+       }
+       else if (curr_state==2){
+         state[i]=sample(c(1,2,3),1,replace = FALSE, prob=c(gamma21/gamma2,gamma22/gamma2,gamma23/gamma2))
+       }
+       else if (curr_state==3){
+         state[i]=3
+       }
+       curr_state=state[i]
+     }
+     
+     transnumber=c(data[j,4],state[3],state[6],state[12],state[24],state[60])#take the state at each of the monitored month
+     
+     #count the number of transitions 
+      for (l in (1:(length(transnumber)-1))) {
+            if (transnumber[l]==1){
+              if (transnumber[l+1]==1){
+                n11=n11+1
+              }
+              else if (transnumber[l+1]==2){
+                n12=n12+1
+              }
+              else if (transnumber[l+1]==3){
+                n13=n13+1
+              }
+            }
+            else if (transnumber[l]==2){
+              if (transnumber[l+1]==1){
+                n21=n21+1
+              }
+              else if (transnumber[l+1]==2){
+                n22=n22+1
+              }
+              else if (transnumber[l+1]==3){
+                n23=n23+1
+              }
+            }
+      }
+    }
+
+     #calculate the distance between observed data and sampled data
+      if(n11==0){
+        nf11=0
+      }else{
+        nf11=(n11-data11)^2/n11
+      }
+     if(n12==0){
+        nf12=0
+     }else{
+        nf12=(n12-data12)^2/n12
+     }
+     if(n13==0){
+       nf13=0
+     }else{
+       nf13=(n13-data13)^2/n13
+     }
+         if(n21==0){
+       nf21=0
+     }else{
+       nf21=(n21-data21)^2/n21
+     }
+     if(n22==0){
+       nf22=0
+     }else{
+       nf22=(n22-data22)^2/n22
+     }
+     if(n23==0){
+       nf23=0
+     }else{
+       nf23=(n23-data23)^2/n23
+     }
+      distance_final[k]=sum(nf11,nf12,nf13,nf21,nf22,nf23) #distance for each iteration
+      ga11[k]=gamma11 #record the simulated parameters
+      ga12[k]=gamma12
+      ga13[k]=gamma13
+      ga21[k]=gamma21
+      ga22[k]=gamma22
+      ga23[k]=gamma23
+  }
+ 
+ sim=data.frame( ga11,ga11_weight=(1:N),ga11_var=2*var(ga11),ga12,ga12_weight=(1:N),ga12_var=2*var(ga12),ga13,ga13_weight=(1:N),ga13_var=2*var(ga13),ga21,ga21_weight=(1:N),ga21_var=2*var(ga21),ga22,ga22_weight=(1:N),ga22_var=2*var(ga22),ga23,ga23_weight=(1:N),ga23_var=2*var(ga23),distance_final)
+ sim=subset(sim,distance_final<=tau[1]) #filter out the parameters with large distance
+ sim$ga11_weight=sim$ga12_weight=sim$ga13_weight=sim$ga21_weight=sim$ga22_weight=sim$ga23_weight=1/nrow(sim) #set weight for each parameter
+  #end of first round
+ 
+  for (r in 2:round){
+  ga11=ga12=ga13=ga21=ga22=ga23=rep(NA,N)
+  distance_final=rep(NA,N)
+  for (k in 1:N){
+    gamma11=sample(sim$ga11,1,prob=sim$ga11_weight,replace = TRUE) #simulate parameter from previous round
+    gamma11=abs(rnorm(1,mean=gamma11,sd=sqrt(sim$ga11_var)))#purturb the simulated parameter
+    gamma12=sample(sim$ga12,1,prob=sim$ga12_weight,replace = TRUE)
+    gamma12=abs(rnorm(1,mean=gamma12,sd=sqrt(sim$ga12_var)))
+    gamma13=sample(sim$ga13,1,prob=sim$ga13_weight,replace = TRUE)
+    gamma13=abs(rnorm(1,mean=gamma13,sd=sqrt(sim$ga13_var)))
+    gamma21=sample(sim$ga21,1,prob=sim$ga21_weight,replace = TRUE)
+    gamma21=abs(rnorm(1,mean=gamma21,sd=sqrt(sim$ga21_var)))
+    gamma22=sample(sim$ga22,1,prob=sim$ga22_weight,replace = TRUE)
+    gamma22=abs(rnorm(1,mean=gamma22,sd=sqrt(sim$ga22_var)))
+    gamma23=sample(sim$ga23,1,prob=sim$ga23_weight,replace = TRUE)
+    gamma23=abs(rnorm(1,mean=gamma23,sd=sqrt(sim$ga23_var)))
+    gamma1=sum(gamma12,gamma13,gamma11)
+    gamma2=sum(gamma21,gamma22,gamma23)
+    n11=n12=n13=n21=n22=n23=0
+          
+    for (j in 1:37){
+     curr_state=data[j,4]
+     state=rep(0,60)
+     for( i in 1:60){
+       if (curr_state==1){
+         state[i]=sample(c(1,2,3),1,replace = FALSE, prob=c(gamma11/gamma1,gamma12/gamma1,gamma13/gamma1))
+       }else if (curr_state==2){
+         state[i]=sample(c(1,2,3),1,replace = FALSE, prob=c(gamma21/gamma2,gamma22/gamma2,gamma23/gamma2))
+       }else if (curr_state==3){
+         state[i]=3
+       }
+       curr_state=state[i]
+     }
+     transnumber=c(data[j,4],state[3],state[6],state[12],state[24],state[60])
+ 
+      for (l in (1:(length(transnumber)-1))) {
+           if (transnumber[l]==1){
+              if (transnumber[l+1]==1){
+                n11=n11+1
+              }else if (transnumber[l+1]==2){
+                n12=n12+1
+              }else if (transnumber[l+1]==3){
+                n13=n13+1
+              }
+            } else if (transnumber[l]==2){
+              if (transnumber[l+1]==1){
+                n21=n21+1
+            }else if (transnumber[l+1]==2){
+                n22=n22+1
+              }else if (transnumber[l+1]==3){
+                n23=n23+1
+              }
+            }
+      }
+    }
+
+      if(n11==0){
+        nf11=0
+      }else{
+        nf11=(n11-data11)^2/n11
+      }
+     if(n12==0){
+        nf12=0
+     }else{
+        nf12=(n12-data12)^2/n12
+     }
+     if(n13==0){
+       nf13=0
+     }else{
+       nf13=(n13-data13)^2/n13
+     }
+     if(n21==0){
+       nf21=0
+     }else{
+       nf21=(n21-data21)^2/n21
+     }
+     if(n22==0){
+       nf22=0
+     }else{
+       nf22=(n22-data22)^2/n22
+     }
+     if(n23==0){
+       nf23=0
+     }else{
+       nf23=(n23-data23)^2/n23
+     }
+     distance_final[k]=sum(nf11,nf12,nf13,nf21,nf22,nf23)
+      ga11[k]=gamma11
+      ga12[k]=gamma12
+      ga13[k]=gamma13
+      ga21[k]=gamma21
+      ga22[k]=gamma22
+      ga23[k]=gamma23
+  }
+  
+  #set weight after every round
+  ga11_weight_new=ga12_weight_new=ga13_weight_new=ga21_weight_new=ga22_weight_new=ga23_weight_new=rep(N,1/length(ga11)) 
+  for (o in (1:length(ga11))){
+      ga11_weight_new[o]=dbeta(ga11[o], 2, 5)/sum(sim$ga11_weight*dnorm(ga11[o],sim$ga11,sim$ga11_var))
+     ga12_weight_new[o]=dbeta(ga12[o], 2, 5)/sum(sim$ga12_weight*dnorm(ga12[o],sim$ga12,sim$ga12_var))
+     ga13_weight_new[o]=dbeta(ga13[o], 2, 5)/sum(sim$ga13_weight*dnorm(ga13[o],sim$ga13,sim$ga13_var))
+     ga21_weight_new[o]=dbeta(ga11[o], 2, 5)/sum(sim$ga21_weight*dnorm(ga21[o],sim$ga21,sim$ga21_var))
+     ga22_weight_new[o]=dbeta(ga22[o], 2, 5)/sum(sim$ga22_weight*dnorm(ga22[o],sim$ga22,sim$ga22_var))
+     ga23_weight_new[o]=dbeta(ga23[o], 2, 5)/sum(sim$ga23_weight*dnorm(ga23[o],sim$ga23,sim$ga23_var))
+    }
+
+sim=data.frame( ga11,ga11_weight=ga11_weight_new,ga11_var=2*var(ga11),ga12,ga12_weight=ga12_weight_new,ga12_var=2*var(ga12),ga13,ga13_weight=ga13_weight_new,ga13_var=2*var(ga13),ga21,ga21_weight=ga21_weight_new,ga21_var=2*var(ga21),ga22,ga22_weight=ga22_weight_new,ga22_var=2*var(ga22),ga23,ga23_weight=ga23_weight_new,ga23_var=2*var(ga23),distance_final)
+  sim=subset(sim,distance_final<=tau[r])#reject parameters based on the threshold for this round
+  sim$ga11_weight=sim$ga11_weight/sum(sim$ga11_weight)#normalize the weight
+  sim$ga12_weight=sim$ga12_weight/sum(sim$ga12_weight)
+  sim$ga13_weight=sim$ga13_weight/sum(sim$ga13_weight)
+  sim$ga21_weight=sim$ga21_weight/sum(sim$ga21_weight)
+  sim$ga22_weight=sim$ga22_weight/sum(sim$ga22_weight)
+  sim$ga23_weight=sim$ga23_weight/sum(sim$ga23_weight)
+    }
+  return(sim)
+}
+```
+
+```{r}
+set.seed(1980)
+smc_out=run_ABC_SMC_markov(cancerdata,1000,3,c(38,12,13,2,14,19),c(500,400,120))
+```
+
+```{r}
+ggplot(smc_out,aes(x=ga11)) +
+  geom_histogram( aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.03) +
+  stat_function(fun=dbeta, args=list(2, 2)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(smc_out$ga11),color ='red' ) 
+
+ggplot(smc_out,aes(x=ga12)) +
+  geom_histogram( aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.03) +
+  stat_function(fun=dbeta, args=list(2, 4)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(smc_out$ga12),color ='red' )
+
+ggplot(smc_out,aes(x=ga13)) +
+  geom_histogram( aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.03) +
+  stat_function(fun=dbeta, args=list(2, 5)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(smc_out$ga13),color ='red' )
+
+ggplot(smc_out,aes(x=ga21)) +
+  geom_histogram( aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.03) +
+  stat_function(fun=dbeta, args=list(1, 15)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(smc_out$ga21),color ='red' )
+
+ggplot(smc_out,aes(x=ga22)) +
+  geom_histogram( aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.03) +
+  stat_function(fun=dbeta, args=list(2, 4)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(smc_out$ga22),color ='red' )
+
+ggplot(smc_out,aes(x=ga23)) +
+  geom_histogram( aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.03) +
+  stat_function(fun=dbeta, args=list(2, 4)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(smc_out$ga23),color ='red' ) 
+```
+
+```{r}
+ga11=mean(smc_out$ga11)
+ga12=mean(smc_out$ga12)
+ga13=mean(smc_out$ga13)
+ga21=mean(smc_out$ga21)
+ga22=mean(smc_out$ga22)
+ga23=mean(smc_out$ga23)
+ga11/sum(ga11,ga12,ga13)
+ga12/sum(ga11,ga12,ga13)
+ga13/sum(ga11,ga12,ga13)
+ga21/sum(ga21,ga22,ga23)
+ga22/sum(ga21,ga22,ga23)
+ga23/sum(ga21,ga22,ga23)
+```
+
+
+
+
+### ABC Rejection on Markov Model
+
+```{r}
+run_ABC_rejection_markov = function(data,N,data11,data12,data13,data21,data22,data23) {
+  ga11=rep(NA,N)
+  ga12=rep(NA,N)
+  ga13=rep(NA,N)
+  ga21=rep(NA,N)
+  ga22=rep(NA,N)
+  ga23=rep(NA,N)
+  distance_final=rep(NA,N)
+
+  for (k in 1:N){
+    # For each lambda, generate a simulated data with 13 cases
+    gamma12=rbeta(1,1,10)
+    gamma11=rbeta(1,1,10)
+    gamma22=rbeta(1,1,10)
+    gamma13=rbeta(1,1,10)
+    gamma21=rbeta(1,1,10)
+    gamma23=rbeta(1,1,10)
+    #gamma=c(gamma12,gamma13,gamma21,gamma23)
+    numTran=0
+    gamma=sum(gamma12,gamma13,gamma11)
+    gamma2=sum(gamma22,gamma23,gamma21)
+    n11=0
+    n12=0
+    n13=0
+    n21=0
+    n22=0
+    n23=0
+    for (j in 1:37){
+     curr_state=data[j,4]
+     state=rep(0,60)
+     #state[1]=curr_state
+     
+     for( i in 1:60){
+       if (curr_state==1){
+         state[i]=sample(c(1,2,3),1,replace = FALSE, prob=c(gamma11/gamma,gamma12/gamma,gamma13/gamma))
+       }
+       else if (curr_state==2){
+         state[i]=sample(c(1,2,3),1,replace = FALSE, prob=c(gamma21/gamma2,gamma22/gamma2,gamma23/gamma2))
+       }
+
+       else if (curr_state==3){
+         state[i]=3
+       }
+       curr_state=state[i]
+     }
+     transnumber=c(data[j,4],state[3],state[6],state[12],state[24],state[60]) #use the fourth column? 
+
+      for (l in (1:(length(transnumber)-1))) {
+
+            if (transnumber[l]==1){
+              if (transnumber[l+1]==1){
+                n11=n11+1
+              }
+              else if (transnumber[l+1]==2){
+                n12=n12+1
+              }
+              else if (transnumber[l+1]==3){
+                n13=n13+1
+              }
+
+            }
+
+            else if (transnumber[l]==2){
+
+              if (transnumber[l+1]==1){
+                n21=n21+1
+              }
+              else if (transnumber[l+1]==2){
+                n22=n22+1
+              }
+              else if (transnumber[l+1]==3){
+                n23=n23+1
+              }
+            }
+      }
+    }
+    #print(list(n11,n12,n13))
+      if(n11==0){
+        nf11=0
+      }else{
+        nf11=(n11-data11)^2/n11
+      }
+     if(n12==0){
+        nf12=0
+     }else{
+        nf12=(n12-data12)^2/n12
+     }
+     if(n13==0){
+       nf13=0
+     }else{
+       nf13=(n13-data13)^2/n13
+     }
+     if(n21==0){
+       nf21=0
+     }else{
+       nf21=(n21-data21)^2/n21
+     }
+
+     if(n22==0){
+       nf22=0
+     }else{
+       nf22=(n22-data22)^2/n22
+     }
+     if(n23==0){
+       nf23=0
+     }else{
+       nf23=(n23-data23)^2/n23
+     }
+      distance_final[k]=sum(nf11,nf12,nf13,nf21,nf22,nf23)
+      ga11[k]=gamma11
+      ga12[k]=gamma12
+      ga13[k]=gamma13
+      ga21[k]=gamma21
+      ga22[k]=gamma22
+      ga23[k]=gamma23
+  }
+  sim = data.frame(ga11,ga12,ga13,ga21,ga22,ga23,distance_final)
+  return(sim)
+}
+```
+
+```{r}
+markov_out_rej=run_ABC_rejection_markov(cancerdata,5000,38,12,13,2,14,19)
+```
+
+```{r}
+threshold = 10
+data=filter(markov_out_rej,distance_final<threshold)
+
+ggplot(markov_out_rej,aes(x=ga11)) +
+    geom_histogram( data=filter(markov_out_rej,distance_final<threshold), aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.05) +
+  stat_function(fun=dbeta, args=list(1, 10)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(data$ga11),color ='red' ) 
+
+ggplot(markov_out_rej,aes(x=ga12)) +
+    geom_histogram( data=filter(markov_out_rej,distance_final<threshold), aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.05) +
+  stat_function(fun=dbeta, args=list(1, 10)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(data$ga12),color ='red' ) 
+
+ggplot(markov_out_rej,aes(x=ga13)) +
+    geom_histogram( data=filter(markov_out_rej,distance_final<threshold), aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.05) +
+  stat_function(fun=dbeta, args=list(1, 10)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(data$ga13),color ='red' ) 
+
+ggplot(markov_out_rej,aes(x=ga21)) +
+    geom_histogram( data=filter(markov_out_rej,distance_final<threshold), aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.05) +
+  stat_function(fun=dbeta, args=list(1, 10)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(data$ga21),color ='red' ) 
+
+ggplot(markov_out_rej,aes(x=ga22)) +
+    geom_histogram( data=filter(markov_out_rej,distance_final<threshold), aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.05) +
+  stat_function(fun=dbeta, args=list(1, 10)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(data$ga22),color ='red' ) 
+
+ggplot(markov_out_rej,aes(x=ga23)) +
+    geom_histogram( data=filter(markov_out_rej,distance_final<threshold), aes(y=..density..), color = 'white', boundary = 0, binwidth = 0.05) +
+  stat_function(fun=dbeta, args=list(1, 10)) +
+  xlim(0,1) +
+  geom_vline(xintercept = mean(data$ga23),color ='red' ) 
+```
+
+```{r}
+# Overall transition probabilities 
+mean(data$ga11)/(mean(data$ga11)+mean(data$ga12)+mean(data$ga13))
+mean(data$ga12)/(mean(data$ga11)+mean(data$ga12)+mean(data$ga13))
+mean(data$ga13)/(mean(data$ga11)+mean(data$ga12)+mean(data$ga13))
+mean(data$ga21)/(mean(data$ga21)+mean(data$ga22)+mean(data$ga23))
+mean(data$ga22)/(mean(data$ga21)+mean(data$ga22)+mean(data$ga23))
+mean(data$ga23)/(mean(data$ga21)+mean(data$ga22)+mean(data$ga23))
+```
+
+
+
+
+
